@@ -677,9 +677,8 @@ namespace PeterHan.PLib.UI {
 						0.5f, 0.5f), 100.0f, 0, SpriteMeshType.FullRect, border);
 				}
 			} catch (IOException e) {
-#if DEBUG
+				// Log unconditionally — silently swallowing the load failure hides real problems.
 				PUtil.LogExcWarn(e);
-#endif
 			}
 			return sprite;
 		}

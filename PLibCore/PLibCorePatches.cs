@@ -75,9 +75,8 @@ namespace PeterHan.PLib.Core {
 					plibInstance.PatchTranspile(ugc, "LoadPreviewImage", PatchMethod(nameof(
 						LoadPreviewImage_Transpile)));
 				} catch (Exception e) {
-#if DEBUG
+					// Log unconditionally — silently swallowing a failed patch hides real problems.
 					PUtil.LogExcWarn(e);
-#endif
 				}
 			plibInstance.Patch(typeof(Localization), nameof(Localization.Initialize),
 				postfix: PatchMethod(nameof(Initialize_Postfix)));

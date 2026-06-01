@@ -18,6 +18,7 @@
 
 using PeterHan.PLib.Core;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace PeterHan.PLib.Actions {
@@ -35,16 +36,114 @@ namespace PeterHan.PLib.Actions {
 				ToolParameterMenu menu, ICollection<PToolMode> options) {
 			if (options == null)
 				throw new ArgumentNullException(nameof(options));
-			var kOpt = new Dictionary<string, ToolParameterMenu.ToggleState>(options.Count);
-			// Add to Klei format, yes it loses the order but it means less of a mess
+			// U59 (Unity 6 / Mergedown tool refresh) changed ToolParameterMenu.PopulateMenu from
+			// taking a live Dictionary<string, ToggleState> to a ToggleData[] whose elements the
+			// menu mutates in place. Build that array, then hand back a thin dictionary view over
+			// it so the long-standing "dictionary updated in real time" contract still holds.
+			var toggles = new ToolParameterMenu.ToggleData[options.Count];
+			int i = 0;
 			foreach (var option in options) {
 				string key = option.Key;
 				if (!string.IsNullOrEmpty(option.Title))
 					Strings.Add("STRINGS.UI.TOOLS.FILTERLAYERS." + key, option.Title);
-				kOpt.Add(key, option.State);
+				toggles[i++] = new ToolParameterMenu.ToggleData(key, option.State);
 			}
-			menu.PopulateMenu(kOpt);
-			return kOpt;
+			menu.PopulateMenu(toggles);
+			return new ToggleStateView(toggles);
+		}
+
+		/// <summary>
+		/// A live dictionary view over the ToggleData array used by the U59+ ToolParameterMenu.
+		/// Reads and writes proxy directly to each ToggleData.state, preserving the previous
+		/// "dictionary updated in real time" behavior of PopulateMenu. Structural mutation is
+		/// unsupported because the toggle set is fixed once the menu is populated.
+		/// </summary>
+		private sealed class ToggleStateView : IDictionary<string, ToolParameterMenu.ToggleState> {
+			private readonly ToolParameterMenu.ToggleData[] toggles;
+
+			internal ToggleStateView(ToolParameterMenu.ToggleData[] toggles) {
+				this.toggles = toggles;
+			}
+
+			private ToolParameterMenu.ToggleData Find(string key) {
+				foreach (var t in toggles)
+					if (t.name == key)
+						return t;
+				return null;
+			}
+
+			public ToolParameterMenu.ToggleState this[string key] {
+				get {
+					return (Find(key) ?? throw new KeyNotFoundException(key)).state;
+				}
+				set {
+					(Find(key) ?? throw new KeyNotFoundException(key)).state = value;
+				}
+			}
+
+			public ICollection<string> Keys {
+				get {
+					var k = new List<string>(toggles.Length);
+					foreach (var t in toggles)
+						k.Add(t.name);
+					return k;
+				}
+			}
+
+			public ICollection<ToolParameterMenu.ToggleState> Values {
+				get {
+					var v = new List<ToolParameterMenu.ToggleState>(toggles.Length);
+					foreach (var t in toggles)
+						v.Add(t.state);
+					return v;
+				}
+			}
+
+			public int Count => toggles.Length;
+
+			public bool IsReadOnly => false;
+
+			public bool ContainsKey(string key) => Find(key) != null;
+
+			public bool TryGetValue(string key, out ToolParameterMenu.ToggleState value) {
+				var t = Find(key);
+				value = (t == null) ? ToolParameterMenu.ToggleState.Off : t.state;
+				return t != null;
+			}
+
+			public bool Contains(KeyValuePair<string, ToolParameterMenu.ToggleState> item) {
+				var t = Find(item.Key);
+				return t != null && t.state == item.Value;
+			}
+
+			public void CopyTo(KeyValuePair<string, ToolParameterMenu.ToggleState>[] array,
+					int arrayIndex) {
+				foreach (var t in toggles)
+					array[arrayIndex++] = new KeyValuePair<string, ToolParameterMenu.ToggleState>(
+						t.name, t.state);
+			}
+
+			public IEnumerator<KeyValuePair<string, ToolParameterMenu.ToggleState>>
+					GetEnumerator() {
+				foreach (var t in toggles)
+					yield return new KeyValuePair<string, ToolParameterMenu.ToggleState>(t.name,
+						t.state);
+			}
+
+			IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+			public void Add(string key, ToolParameterMenu.ToggleState value) =>
+				throw new NotSupportedException();
+
+			public void Add(KeyValuePair<string, ToolParameterMenu.ToggleState> item) =>
+				throw new NotSupportedException();
+
+			public bool Remove(string key) => throw new NotSupportedException();
+
+			public bool Remove(KeyValuePair<string, ToolParameterMenu.ToggleState> item) =>
+				throw new NotSupportedException();
+
+			public void Clear() => throw new NotSupportedException();
 		}
 
 		/// <summary>

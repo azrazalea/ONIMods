@@ -176,9 +176,8 @@ namespace PeterHan.PLib.Buildings {
 					CreateEquipmentDef), postfix: PatchMethod(nameof(
 					CreateEquipmentDef_Postfix)));
 			} catch (Exception e) {
-#if DEBUG
+				// Log unconditionally — silently swallowing a failed patch hides real problems.
 				PUtil.LogExcWarn(e);
-#endif
 			}
 			plibInstance.Patch(typeof(GeneratedBuildings), nameof(GeneratedBuildings.
 				LoadGeneratedBuildings), prefix: PatchMethod(nameof(

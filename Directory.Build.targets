@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
+  <!-- We don't ship PLib's API docs (the game never reads XML docs; doc generation only existed
+       to feed ILRepack). Skip it so missing-doc warnings (CS1591/CS1572/CS1573) on the vendored
+       PLib code don't flood every build. Imported after the .csproj, so this wins. -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DocumentationFile></DocumentationFile>
+  </PropertyGroup>
+
   <Target Name="SetPlatform" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <PlatformTarget>AnyCPU</PlatformTarget>

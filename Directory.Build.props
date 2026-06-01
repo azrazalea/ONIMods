@@ -72,10 +72,8 @@
     <DefineConstants>MERGEDOWN</DefineConstants>
     <APIVersion>2</APIVersion>
   </PropertyGroup>
-  <ItemGroup Condition="'$(TargetFrameworks.Contains(netstandard2.1))' == 'true'">
-    <!-- Choose the correct version to reduce log spam w.r.t. mismatched assembly versions -->
-    <Reference Include="System.IO.Compression, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-      <SpecificVersion>True</SpecificVersion>
-    </Reference>
-  </ItemGroup>
+  <!-- Removed the explicit System.IO.Compression reference: PLib never uses it, and pinning a
+       version only manufactured an unresolvable conflict against the netstandard2.1 facade
+       (MSB3245/MSB3277). The game supplies its own copy at runtime. -->
+
 </Project>
