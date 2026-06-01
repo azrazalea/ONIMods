@@ -92,8 +92,11 @@ namespace PeterHan.FinishTasks {
 				var currentChore = driver.GetCurrentChore();
 				// Allow the task that the Duplicant initially was doing to continue even if
 				// temporarily interrupted
+				// Branches were inverted: when the detector existed this returned null (killing the
+				// "resume interrupted task" path), and the detector.* access sat in the
+				// no-detector branch. Swapped to the intended logic. (local fix)
 				var savedChore = driver.TryGetComponent(out FinishChoreDetector detector) ?
-					null : (detector.IsAcquiringChore ? currentChore : detector.TaskToFinish);
+					(detector.IsAcquiringChore ? currentChore : detector.TaskToFinish) : null;
 				start = currentChore != null && (currentChore == context.chore || currentChore.
 					masterPriority.priority_class == PriorityScreen.PriorityClass.compulsory ||
 					savedChore == context.chore);

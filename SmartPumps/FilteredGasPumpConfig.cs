@@ -51,7 +51,10 @@ namespace PeterHan.SmartPumps {
 				EffectText = null,
 				Entombs = true,
 				Floods = true,
-				HeatGeneration = 2.0f,
+				// Vanilla Gas Pump emits no self-heat; the 2.0 here (copied from the liquid pump,
+				// which does match its vanilla counterpart) made the filtered gas pump run hotter
+				// than the building it mirrors. (local fix)
+				HeatGeneration = 0.0f,
 				Height = 2,
 				HP = 30,
 				LogicIO = {

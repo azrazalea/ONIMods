@@ -66,7 +66,9 @@ namespace PeterHan.AirlockDoor {
 				// Overheating is not possible on solid tile buildings because they bypass
 				// structure temperatures so sim will never send the overheat notification
 				Placement = BuildLocationRule.Tile,
-				PowerInput = new PowerRequirement(120.0f, new CellOffset(0, 0)),
+				// Recharge doubled 120->240 W to match the base Airlock Door (shares the 3000/use
+				// energy cost, so it had the same stall). (local fix)
+				PowerInput = new PowerRequirement(240.0f, new CellOffset(0, 0)),
 				RotateMode = PermittedRotations.Unrotatable,
 				SceneLayer = Grid.SceneLayer.InteriorWall,
 				SubCategory = "doors",
