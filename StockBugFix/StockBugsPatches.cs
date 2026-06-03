@@ -240,7 +240,6 @@ namespace PeterHan.StockBugFix {
 		public override void OnAllModsLoaded(Harmony harmony, IReadOnlyList<Mod> mods) {
 			const string FIX_IRRIGATION = "Bugs.PlantIrrigation";
 			base.OnAllModsLoaded(harmony, mods);
-			DecorProviderRefreshFix.ApplyPatch(harmony);
 			FixMassStringsReadOnly(harmony);
 			if (PPatchTools.GetTypeSafe("BetterPlantTending.TendedPlant") == null &&
 					PUtil.GameVersion < 716056U && !PRegistry.GetData<bool>(FIX_IRRIGATION) &&
@@ -259,7 +258,6 @@ namespace PeterHan.StockBugFix {
 			FixModUpdateRace(instance);
 			PRegistry.PutData("Bugs.TepidizerPulse", true);
 			PRegistry.PutData("Bugs.TraitExclusionSpacedOut", true);
-			PRegistry.PutData("Bugs.TropicalPacuRooms", true);
 			PRegistry.PutData("Bugs.AutosaveDragFix", true);
 			/*
 			 * For Sgt_Imalas:
@@ -329,159 +327,6 @@ namespace PeterHan.StockBugFix {
 			__result = ci != null && Components.Telepads.GetWorldItems(ci.activeWorldId).
 				Count > 0;
 			return false;
-		}
-	}
-
-	/// <summary>
-	/// Applied to DecorProvider to reduce the effect of the Tropical Pacu bug by instead of
-	/// triggering a full room rebuild, just refreshing the room constraints.
-	/// 
-	/// If Decor Reimagined is installed, it will override the auto patch, the conditional one
-	/// will be used instead.
-	/// </summary>
-	public static class DecorProviderRefreshFix {
-		/// <summary>
-		/// Stores the rooms that are pending an update.
-		/// </summary>
-		private static readonly ISet<int> ROOMS_PENDING = new HashSet<int>();
-
-		/// <summary>
-		/// Attempts to also patch the Decor Reimagined implementation of DecorProvider.
-		/// Refresh.
-		/// </summary>
-		/// <param name="harmony">The Harmony instance to use for patching.</param>
-		internal static void ApplyPatch(Harmony harmony) {
-			var patchMethod = new HarmonyMethod(typeof(DecorProviderRefreshFix), nameof(
-				TranspileRefresh));
-			var targetMethod = PPatchTools.GetTypeSafe(
-				"ReimaginationTeam.DecorRework.DecorSplatNew", "DecorReimagined")?.
-				GetMethodSafe("RefreshDecor", false, PPatchTools.AnyArguments);
-			if (targetMethod != null) {
-				PUtil.LogDebug("Patching Decor Reimagined for DecorProvider.RefreshDecor");
-				harmony.Patch(targetMethod, transpiler: patchMethod);
-			}
-			PUtil.LogDebug("Patching DecorProvider.Refresh");
-			harmony.Patch(typeof(DecorProvider).GetMethodSafe(nameof(DecorProvider.Refresh),
-				false, PPatchTools.AnyArguments), transpiler: patchMethod);
-			harmony.Patch(typeof(RoomProber), nameof(RoomProber.Sim1000ms), prefix:
-				new HarmonyMethod(typeof(DecorProviderRefreshFix), nameof(PrefixRoomProbe)));
-			ROOMS_PENDING.Clear();
-		}
-
-		/// <summary>
-		/// Retriggers the conditions only when rooms would be rebuilt normally.
-		/// </summary>
-		[HarmonyPriority(Priority.HigherThanNormal)]
-		private static void PrefixRoomProbe(RoomProber __instance) {
-			foreach (int cell in ROOMS_PENDING)
-				if (Grid.IsValidCell(cell)) {
-					var cavity = __instance.GetCavityForCell(cell);
-					if (cavity != null)
-						__instance.UpdateRoom(cavity);
-					else
-						__instance.SolidChangedEvent(cell, true);
-				}
-			ROOMS_PENDING.Clear();
-		}
-
-		/// <summary>
-		/// Instead of triggering a full solid change of the room, merely retrigger the
-		/// conditions.
-		/// </summary>
-		/// <param name="prober">The current room prober.</param>
-		/// <param name="cell">The cell of the room that will be updated.</param>
-		private static void SolidNotChangedEvent(RoomProber prober, int cell, bool _) {
-			if (prober != null)
-				ROOMS_PENDING.Add(cell);
-		}
-
-		/// <summary>
-		/// Transpiles Refresh to change a solid change event into a condition retrigger.
-		/// </summary>
-		[HarmonyPriority(Priority.LowerThanNormal)]
-		internal static TranspiledMethod TranspileRefresh(TranspiledMethod instructions) {
-			return PPatchTools.ReplaceMethodCallSafe(instructions, typeof(RoomProber).
-				GetMethodSafe(nameof(RoomProber.SolidChangedEvent), false, typeof(int),
-				typeof(bool)), typeof(DecorProviderRefreshFix).GetMethodSafe(nameof(
-				SolidNotChangedEvent), true, typeof(RoomProber), typeof(int), typeof(bool)));
-		}
-	}
-	
-	/// <summary>
-	/// Applied to Diggable to prevent maximum experience overflow if Super Productive
-	/// manages to complete on Neutronium.
-	/// </summary>
-	[HarmonyPatch(typeof(Diggable), nameof(Diggable.InstantlyFinish))]
-	public static class Diggable_InstantlyFinish_Patch {
-		/// <summary>
-		/// Applied before InstantlyFinish runs.
-		/// </summary>
-		internal static bool Prefix(Diggable __instance, ref bool __result) {
-			bool cont = true;
-			if (__instance != null) {
-				int cell = Grid.PosToCell(__instance);
-				Element element;
-				// Complete by removing the cell instantaneously
-				if (Grid.IsValidCell(cell) && (element = Grid.Element[cell]) != null &&
-						element.hardness > 254) {
-					SimMessages.Dig(cell);
-					__result = true;
-					cont = false;
-				}
-			}
-			return cont;
-		}
-	}
-
-	/// <summary>
-	/// Applied to EnergyGenerator to use the correct building output temperature.
-	/// </summary>
-	[HarmonyPatch(typeof(EnergyGenerator), "Emit")]
-	public static class EnergyGenerator_Emit_Patch {
-		/// <summary>
-		/// Allow this patch to be turned off in the config.
-		/// </summary>
-		internal static bool Prepare() {
-			return StockBugFixOptions.Instance.MinOutputTemperature;
-		}
-
-		/// <summary>
-		/// Transpiles Emit to add a call to Mathf.Max on each attempt to access the building
-		/// temperature with the output minimum temperature.
-		/// </summary>
-		internal static TranspiledMethod Transpiler(TranspiledMethod method,
-				ILGenerator generator) {
-			var targetMethod = typeof(PrimaryElement).GetPropertySafe<float>(nameof(
-				PrimaryElement.Temperature), false)?.GetGetMethod();
-			var maxMethod = typeof(Mathf).GetMethodSafe(nameof(Mathf.Max), true, typeof(float),
-				typeof(float));
-			var emitOffset = typeof(EnergyGenerator.OutputItem).GetFieldSafe(nameof(
-				EnergyGenerator.OutputItem.emitOffset), false);
-			var minTempField = typeof(EnergyGenerator.OutputItem).GetFieldSafe(
-				nameof(EnergyGenerator.OutputItem.minTemperature), false);
-			if (maxMethod != null && targetMethod != null) {
-				var local = generator.DeclareLocal(typeof(float));
-				bool emitCase = false;
-				// Store the min temperature into local
-				yield return new CodeInstruction(OpCodes.Ldarg_1);
-				yield return new CodeInstruction(OpCodes.Ldfld, minTempField);
-				yield return new CodeInstruction(OpCodes.Stloc_S, local.LocalIndex);
-				foreach (var instr in method) {
-					yield return instr;
-					if (!emitCase && instr.opcode == OpCodes.Callvirt && instr.operand is
-							MethodBase getter && getter == targetMethod) {
-						// Patch all cases until the emit offset is used
-						yield return new CodeInstruction(OpCodes.Ldloc_S, local.LocalIndex);
-						yield return new CodeInstruction(OpCodes.Call, maxMethod);
-					}
-					if (instr.operand is FieldInfo info && info == emitOffset)
-						emitCase = true;
-				}
-			} else {
-				PUtil.LogWarning("Target PrimaryElement method not found.");
-				foreach (var instr in method)
-					yield return instr;
-			}
 		}
 	}
 
@@ -703,67 +548,6 @@ namespace PeterHan.StockBugFix {
 					online.Enter("CheckOverheatOnStart", (smi) => updater.Update(smi, 0.0f));
 			if (onUpdate.Count <= 0)
 				PUtil.LogWarning("No SpaceHeater update handler found");
-		}
-	}
-
-	/// <summary>
-	/// Applied to StaterpillarGeneratorConfig to prevent it from overheating, breaking,
-	/// or in any way being damaged. This prevents a crash from Duplicants trying to "repair"
-	/// the Plug Slug if it sleeps in a hot environment.
-	/// </summary>
-	[HarmonyPatch(typeof(StaterpillarGeneratorConfig), nameof(StaterpillarGeneratorConfig.
-		CreateBuildingDef))]
-	public static class StaterpillarGeneratorConfig_CreateBuildingDef_Patch {
-		/// <summary>
-		/// Applied after CreateBuildingDef runs.
-		/// </summary>
-		internal static void Postfix(BuildingDef __result) {
-			__result.Invincible = true;
-			__result.Overheatable = false;
-			__result.OverheatTemperature = Sim.MaxTemperature;
-		}
-	}
-
-	/// <summary>
-	/// Applied to Timelapser to squash a useless warning and fix timelapses not being saved.
-	/// </summary>
-	[HarmonyPatch(typeof(Timelapser), "OnNewDay")]
-	public static class Timelapser_OnNewDay_Patch {
-		private static bool NeedTimelapse(int cycle) {
-			int cycle10 = cycle % 10;
-			return cycle > 0 && (cycle <= 50 || (cycle < 100 && cycle10 == 5) || cycle10 == 0);
-		}
-
-		/// <summary>
-		/// Applied before OnNewDay runs.
-		/// </summary>
-		internal static bool Prefix(IList<int> ___worldsToScreenshot,
-				ref bool ___screenshotToday) {
-			var ci = ClusterManager.Instance;
-			if (___worldsToScreenshot != null && ci != null) {
-				var containers = ci.WorldContainers;
-				int n = containers.Count, cycle = GameClock.Instance.GetCycle();
-				bool screenshot = false;
-				if (___worldsToScreenshot.Count != 0)
-					PUtil.LogWarning("Timelapser.OnNewDay was called, but worlds are still pending a screenshot");
-				for (int i = 0; i < n; i++) {
-					var world = containers[i];
-					int ds = Mathf.FloorToInt(world.DiscoveryTimestamp);
-					if (ds < 0) ds = 0;
-					if (world.IsDiscovered && !world.IsModuleInterior && NeedTimelapse(cycle -
-							ds)) {
-						screenshot = true;
-#if DEBUG
-						PUtil.LogDebug("Requesting timelapse on cycle {0:D} for world {1:D}".F(
-							cycle, world.id));
-#endif
-						___worldsToScreenshot.Add(world.id);
-					}
-				}
-				if (screenshot)
-					___screenshotToday = true;
-			}
-			return false;
 		}
 	}
 
